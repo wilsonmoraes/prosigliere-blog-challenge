@@ -3,7 +3,6 @@ package com.wilsonmoraes.blogplatform.repository;
 import com.wilsonmoraes.blogplatform.config.JpaAuditingConfig;
 import com.wilsonmoraes.blogplatform.domain.BlogPost;
 import com.wilsonmoraes.blogplatform.domain.Comment;
-import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -16,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
 @Import(JpaAuditingConfig.class)
-class BlogPostRepositoryTest {
+class CommentRepositoryTest {
 
     @Autowired
     private BlogPostRepository blogPostRepository;
@@ -25,24 +24,23 @@ class BlogPostRepositoryTest {
     private CommentRepository commentRepository;
 
     @Test
-    void findAllSummariesReturnsCommentCounts() {
+    void findByBlogPostIdReturnsOnlyMatchingComments() {
         BlogPost first = blogPostRepository.save(new BlogPost("first", "c1"));
-        commentRepository.save(new Comment(first, "a", "hi"));
-        commentRepository.save(new Comment(first, "b", "yo"));
-
         BlogPost second = blogPostRepository.save(new BlogPost("second", "c2"));
 
-        Page<BlogPostSummaryProjection> page = blogPostRepository.findAllSummaries(
-                PageRequest.of(0, 10, Sort.by("id"))
+        commentRepository.save(new Comment(first, "alice", "hi"));
+        commentRepository.save(new Comment(first, "bob", "yo"));
+        commentRepository.save(new Comment(second, "carol", "elsewhere"));
+
+        Page<Comment> page = commentRepository.findByBlogPost_Id(
+                first.getId(), PageRequest.of(0, 10, Sort.by("createdAt"))
         );
 
         assertThat(page.getTotalElements()).isEqualTo(2);
         assertThat(page.getContent())
-                .extracting(BlogPostSummaryProjection::title, BlogPostSummaryProjection::commentCount)
-                .containsExactly(
-                        Tuple.tuple("first", 2L),
-                        Tuple.tuple("second", 0L)
-                );
-        assertThat(second.getId()).isNotNull();
+                .extracting(Comment::getAuthor)
+                .containsExactlyInAnyOrder("alice", "bob");
+        assertThat(page.getContent().get(0).getId()).isNotNull();
+        assertThat(page.getContent().get(0).getCreatedAt()).isNotNull();
     }
 }

@@ -12,7 +12,7 @@ public interface BlogPostRepository extends JpaRepository<BlogPost, Long> {
             select new com.wilsonmoraes.blogplatform.repository.BlogPostSummaryProjection(
                 p.id,
                 p.title,
-                (select count(c) from Comment c where c.blogPost = p),
+                (select count(c) from Comment c where c.blogPost.id = p.id),
                 p.createdAt
             )
             from BlogPost p

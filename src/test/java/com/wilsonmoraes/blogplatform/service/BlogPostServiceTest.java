@@ -3,9 +3,11 @@ package com.wilsonmoraes.blogplatform.service;
 import com.wilsonmoraes.blogplatform.domain.BlogPost;
 import com.wilsonmoraes.blogplatform.domain.Comment;
 import com.wilsonmoraes.blogplatform.repository.BlogPostRepository;
+import com.wilsonmoraes.blogplatform.repository.CommentRepository;
 import com.wilsonmoraes.blogplatform.web.exception.BlogPostNotFoundException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -15,7 +17,6 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -24,6 +25,9 @@ class BlogPostServiceTest {
 
     @Mock
     private BlogPostRepository blogPostRepository;
+
+    @Mock
+    private CommentRepository commentRepository;
 
     @InjectMocks
     private BlogPostService service;
@@ -60,24 +64,35 @@ class BlogPostServiceTest {
     }
 
     @Test
-    void addCommentAttachesCommentToPost() {
-        BlogPost post = new BlogPost("t", "c");
-        when(blogPostRepository.findById(1L)).thenReturn(Optional.of(post));
-        when(blogPostRepository.save(post)).thenReturn(post);
+    void addCommentPersistsCommentWhenPostExists() {
+        BlogPost reference = new BlogPost("t", "c");
+        when(blogPostRepository.existsById(1L)).thenReturn(true);
+        when(blogPostRepository.getReferenceById(1L)).thenReturn(reference);
+        when(commentRepository.save(any(Comment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
         Comment comment = service.addComment(1L, "alice", "nice");
 
+        ArgumentCaptor<Comment> captor = ArgumentCaptor.forClass(Comment.class);
+        verify(commentRepository).save(captor.capture());
+        assertThat(captor.getValue().getBlogPost()).isSameAs(reference);
         assertThat(comment.getAuthor()).isEqualTo("alice");
         assertThat(comment.getContent()).isEqualTo("nice");
-        assertThat(post.getComments()).containsExactly(comment);
-        verify(blogPostRepository, times(1)).save(post);
     }
 
     @Test
     void addCommentThrowsWhenPostMissing() {
-        when(blogPostRepository.findById(42L)).thenReturn(Optional.empty());
+        when(blogPostRepository.existsById(42L)).thenReturn(false);
 
         assertThatThrownBy(() -> service.addComment(42L, "a", "b"))
+                .isInstanceOf(BlogPostNotFoundException.class);
+    }
+
+    @Test
+    void findCommentsByPostIdThrowsWhenPostMissing() {
+        when(blogPostRepository.existsById(7L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.findCommentsByPostId(7L, org.springframework.data.domain.PageRequest.of(0, 10)))
                 .isInstanceOf(BlogPostNotFoundException.class);
     }
 }

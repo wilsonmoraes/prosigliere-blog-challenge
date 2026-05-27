@@ -2,6 +2,7 @@ package com.wilsonmoraes.blogplatform.web;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.wilsonmoraes.blogplatform.domain.BlogPost;
+import com.wilsonmoraes.blogplatform.domain.Comment;
 import com.wilsonmoraes.blogplatform.repository.BlogPostSummaryProjection;
 import com.wilsonmoraes.blogplatform.service.BlogPostService;
 import com.wilsonmoraes.blogplatform.web.dto.CreateBlogPostRequest;
@@ -67,7 +68,9 @@ class BlogPostControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(header().string("Location", org.hamcrest.Matchers.endsWith("/api/posts/7")))
                 .andExpect(jsonPath("$.id").value(7))
-                .andExpect(jsonPath("$.title").value("title"));
+                .andExpect(jsonPath("$.title").value("title"))
+                .andExpect(jsonPath("$.comments").isArray())
+                .andExpect(jsonPath("$.comments.length()").value(0));
     }
 
     @Test
@@ -83,12 +86,16 @@ class BlogPostControllerTest {
     @Test
     void getReturnsPostWithComments() throws Exception {
         BlogPost post = postWithId(2L, "T", "C");
-        post.addComment("alice", "hi");
+        Comment comment = new Comment(post, "alice", "hi");
+        setId(comment, 100L);
         when(blogPostService.findById(2L)).thenReturn(post);
+        when(blogPostService.findCommentsByPostId(eq(2L), any()))
+                .thenReturn(new PageImpl<>(List.of(comment)));
 
         mockMvc.perform(MockMvcRequestBuilders.get("/api/posts/2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(2))
+                .andExpect(jsonPath("$.comments[0].id").value(100))
                 .andExpect(jsonPath("$.comments[0].author").value("alice"));
     }
 
@@ -104,7 +111,7 @@ class BlogPostControllerTest {
     @Test
     void addCommentReturns201() throws Exception {
         BlogPost post = postWithId(5L, "T", "C");
-        var comment = post.addComment("bob", "nice");
+        Comment comment = new Comment(post, "bob", "nice");
         setId(comment, 10L);
         when(blogPostService.addComment(eq(5L), eq("bob"), eq("nice"))).thenReturn(comment);
 
@@ -114,6 +121,23 @@ class BlogPostControllerTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").value(10))
                 .andExpect(jsonPath("$.author").value("bob"));
+    }
+
+    @Test
+    void listCommentsReturnsPaged() throws Exception {
+        BlogPost post = postWithId(5L, "T", "C");
+        Comment c1 = new Comment(post, "alice", "first");
+        setId(c1, 1L);
+        Comment c2 = new Comment(post, "bob", "second");
+        setId(c2, 2L);
+        when(blogPostService.findCommentsByPostId(eq(5L), any()))
+                .thenReturn(new PageImpl<>(List.of(c1, c2), PageRequest.of(0, 20), 2));
+
+        mockMvc.perform(MockMvcRequestBuilders.get("/api/posts/5/comments"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(2))
+                .andExpect(jsonPath("$.content[0].author").value("alice"))
+                .andExpect(jsonPath("$.content[1].author").value("bob"));
     }
 
     private BlogPost postWithId(Long id, String title, String content) {
